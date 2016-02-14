@@ -10,7 +10,7 @@ var Registry = require(compiler + "/level3Compiler/registry");
 var CodeWriter = require(compiler + "/level3Compiler/codeWriter");
 
 describe("InstructionSet", function () {
-  var subject, stack, typedefStack, symbolTable, registry, codeWriter, fetchRestrictions;
+  var subject, stack, typedefStack, symbolTable, registry, codeWriter, conditionalInvariants;
 
   beforeEach(function () {
     stack = new Stack();
@@ -18,7 +18,7 @@ describe("InstructionSet", function () {
     symbolTable = new SymbolTable();
     registry = new Registry();
     codeWriter = new CodeWriter();
-    fetchRestrictions = {};
+    conditionalInvariants = {};
 
     subject = new describedClass({
       stack: stack,
@@ -26,7 +26,7 @@ describe("InstructionSet", function () {
       symbolTable: symbolTable,
       registry: registry,
       codeWriter: codeWriter,
-      fetchRestrictions: fetchRestrictions
+      conditionalInvariants: conditionalInvariants
     });
   });
 
@@ -1684,7 +1684,7 @@ describe("InstructionSet", function () {
 
       it("replaces the top symbol on the stack", function () {
         subject.fetch();
-        expect(stack.pop()).toEqual("$$$_L3_TMP8_$$$");
+        expect(stack.pop()).toEqual("$$$_L3_TMP6_$$$");
         expect(stack.pop()).toEqual("bottom");
       });
 
@@ -1695,8 +1695,8 @@ describe("InstructionSet", function () {
         expect(symbolTable.type(newSymbol)).toEqual("array");
         expect(symbolTable.symbols(newSymbol)).toEqual([
           "$$$_L3_TMP3_$$$",
-          "$$$_L3_TMP5_$$$",
-          "$$$_L3_TMP7_$$$"
+          "$$$_L3_TMP4_$$$",
+          "$$$_L3_TMP5_$$$"
         ]);
       });
 
@@ -1704,22 +1704,22 @@ describe("InstructionSet", function () {
         subject.fetch();
 
         expect(symbolTable.type("$$$_L3_TMP3_$$$")).toEqual("integer");
+        expect(symbolTable.type("$$$_L3_TMP4_$$$")).toEqual("integer");
         expect(symbolTable.type("$$$_L3_TMP5_$$$")).toEqual("integer");
-        expect(symbolTable.type("$$$_L3_TMP7_$$$")).toEqual("integer");
 
         expect(symbolTable.symbols("$$$_L3_TMP3_$$$")).toEqual(["$$$_L3_INTEGER2_$$$"]);
-        expect(symbolTable.symbols("$$$_L3_TMP5_$$$")).toEqual(["$$$_L3_INTEGER3_$$$"]);
-        expect(symbolTable.symbols("$$$_L3_TMP7_$$$")).toEqual(["$$$_L3_INTEGER4_$$$"]);
+        expect(symbolTable.symbols("$$$_L3_TMP4_$$$")).toEqual(["$$$_L3_INTEGER3_$$$"]);
+        expect(symbolTable.symbols("$$$_L3_TMP5_$$$")).toEqual(["$$$_L3_INTEGER4_$$$"]);
       });
 
-      it("adds a restriction to be applied on the next fetch", function () {
+      it("adds an invariant to be applied on the next fetch", function () {
         subject.fetch();
 
         var newSymbol = stack.pop();
-        var restrictions = fetchRestrictions[newSymbol];
+        var invariants = conditionalInvariants[newSymbol];
 
-        expect(restrictions).toEqual([
-          { keySymbols: ["k"], keyIndex: 1, nilIndex: 2 }
+        expect(invariants).toEqual([
+          { invariantSymbol: "$$$_L3_BOOLEAN1_$$$", conditionIndex: 2 },
         ]);
       });
 
@@ -1736,45 +1736,41 @@ describe("InstructionSet", function () {
       });
     });
 
-    describe("fetching from an array with restrictions", function () {
+    describe("fetching from an array with invariants", function () {
       beforeEach(function () {
         symbolTable.set("foo", "integer", ["a"]);
         symbolTable.set("bar", "integer", ["b"]);
 
-        fetchRestrictions.someArray = [
-          { keySymbols: ["p"], keyIndex: 0, nilIndex: 1},
-          { keySymbols: ["p"], keyIndex: 2, nilIndex: 3}
+        conditionalInvariants.someArray = [
+          { invariantSymbol: "inv1", conditionIndex: 1 },
+          { invariantSymbol: "inv2", conditionIndex: 3 }
         ];
 
         symbolTable.set("previousKey", "integer", ["p"]);
       });
 
-      it("adds an invariant for each restriction", function () {
+      it("writes code for the conditional invariants", function () {
         spyOn(codeWriter, "instruction");
         subject.fetch();
 
         var calls = SpecHelper.calls(codeWriter.instruction)
-        var relevantCalls = calls.slice(0, 18);
+        var relevantCalls = calls.slice(0, 14);
 
         expect(relevantCalls).toEqual([
-          { type: "push", symbol: "p" },
-          { type: "constant", value: 0 },
-          { type: "equal" },
           { type: "push", symbol: "k" },
           { type: "constant", value: 1 },
           { type: "equal" },
-          { type: "and" },
           { type: "not" },
+          { type: "push", symbol: "inv1" },
+          { type: "or" },
           { type: "invariant" },
 
-          { type: "push", symbol: "p" },
-          { type: "constant", value: 2 },
-          { type: "equal" },
           { type: "push", symbol: "k" },
           { type: "constant", value: 3 },
           { type: "equal" },
-          { type: "and" },
           { type: "not" },
+          { type: "push", symbol: "inv2" },
+          { type: "or" },
           { type: "invariant" }
         ]);
       });
@@ -1782,9 +1778,37 @@ describe("InstructionSet", function () {
       it("leaves the restrictions untouched for other fetches", function () {
         subject.fetch();
 
-        expect(fetchRestrictions.someArray).toEqual([
-          { keySymbols: ["p"], keyIndex: 0, nilIndex: 1 },
-          { keySymbols: ["p"], keyIndex: 2, nilIndex: 3 }
+        expect(conditionalInvariants.someArray).toEqual([
+          { invariantSymbol: "inv1", conditionIndex: 1 },
+          { invariantSymbol: "inv2", conditionIndex: 3 }
+        ]);
+      });
+    });
+
+    describe("fetching a nested array that has invariants", function () {
+      beforeEach(function () {
+        symbolTable.set("foo", "array", ["a", "b"]);
+        symbolTable.set("bar", "array", ["c"]);
+
+        conditionalInvariants.foo = [
+          { invariantSymbol: "inv1", conditionIndex: 0 }
+        ]
+
+        symbolTable.set("previousKey", "integer", ["p"]);
+        symbolTable.set("anotherKey", "integer", ["q"]);
+
+        symbolTable.set("a", "integer", ["x"]);
+        symbolTable.set("b", "integer", ["y"]);
+        symbolTable.set("c", "integer", ["z"]);
+      });
+
+      it("adds an additional invariant", function () {
+        subject.fetch();
+        var newSymbol = stack.pop();
+
+        expect(conditionalInvariants[newSymbol]).toEqual([
+          { invariantSymbol: '$$$_L3_BOOLEAN1_$$$', conditionIndex: 1 },
+          { invariantSymbol: '$$$_L3_BOOLEAN2_$$$', conditionIndex: 0 }
         ]);
       });
     });
@@ -2129,6 +2153,158 @@ describe("InstructionSet", function () {
       it("throws an error", function () {
         expect(function () {
           subject.equal();
+        }).toThrow();
+      });
+    });
+  });
+
+  describe("width", function () {
+    beforeEach(function () {
+      stack.push("bottom");
+      stack.push("arr");
+
+      symbolTable.set("arr", "array", ["foo", "bar"]);
+      symbolTable.set("foo", "integer", ["a"]);
+      symbolTable.set("bar", "integer", ["b"]);
+    });
+
+    describe("for an array without restrictions", function () {
+      it("replaces the top symbol on the stack", function () {
+        subject.width();
+        expect(stack.pop()).toEqual("$$$_L3_TMP1_$$$");
+        expect(stack.pop()).toEqual("bottom");
+      });
+
+      it("adds the new symbol to the symbol table", function () {
+        subject.width();
+        var newSymbol = stack.pop();
+
+        expect(symbolTable.type(newSymbol)).toEqual("integer");
+        expect(symbolTable.symbols(newSymbol)).toEqual(["$$$_L3_INTEGER1_$$$"]);
+      });
+
+      it("writes instructions for 'width'", function () {
+        spyOn(codeWriter, "instruction");
+        subject.width();
+
+        expect(SpecHelper.calls(codeWriter.instruction)).toEqual([
+          { type: "constant", value: 2 },
+          { type: "pop", symbol: "$$$_L3_INTEGER1_$$$" }
+        ]);
+      });
+    });
+
+    describe("for an array with a single restriction", function () {
+      beforeEach(function () {
+        conditionalInvariants.arr = [
+          { keySymbols: ["k"], keyIndex: 5, nilIndex: 1 }
+        ]
+      });
+
+      it("writes instructions for 'width'", function () {
+        spyOn(codeWriter, "instruction");
+        subject.width();
+
+        expect(SpecHelper.calls(codeWriter.instruction)).toEqual([
+          // 1 unless k == 5
+          { type: 'push', symbol: 'k' },
+          { type: 'constant', value: 5 },
+          { type: 'equal' },
+          { type: 'constant', value: 0 },
+          { type: 'constant', value: 1 },
+          { type: 'if' },
+
+          // 1 (unconditional)
+          { type: 'constant', value: 1 },
+
+          { type: 'add' },
+          { type: 'pop', symbol: '$$$_L3_INTEGER1_$$$' }
+        ]);
+      });
+    });
+
+    describe("for an array with multiple restrictions", function () {
+      beforeEach(function () {
+        conditionalInvariants.arr = [
+          { keySymbols: ["k"], keyIndex: 5, nilIndex: 1 },
+          { keySymbols: ["x"], keyIndex: 3, nilIndex: 0 }
+        ]
+      });
+
+      it("writes instructions for 'width'", function () {
+        spyOn(codeWriter, "instruction");
+        subject.width();
+
+        expect(SpecHelper.calls(codeWriter.instruction)).toEqual([
+          // 1 unless x == 3
+          { type: 'push', symbol: 'x' },
+          { type: 'constant', value: 3 },
+          { type: 'equal' },
+          { type: 'constant', value: 0 },
+          { type: 'constant', value: 1 },
+          { type: 'if' },
+
+          // 1 unless k == 5
+          { type: 'push', symbol: 'k' },
+          { type: 'constant', value: 5 },
+          { type: 'equal' },
+          { type: 'constant', value: 0 },
+          { type: 'constant', value: 1 },
+          { type: 'if' },
+
+          // 0 (unconditional)
+          { type: 'constant', value: 0 },
+
+          { type: 'add' },
+          { type: 'add' },
+          { type: 'pop', symbol: '$$$_L3_INTEGER1_$$$' }
+        ]);
+      });
+    });
+
+    describe("when restrictions are for the same index", function () {
+      beforeEach(function () {
+        conditionalInvariants.arr = [
+          { keySymbols: ["k"], keyIndex: 5, nilIndex: 1 },
+          { keySymbols: ["x"], keyIndex: 3, nilIndex: 1 }
+        ]
+      });
+
+      it("writes instructions for 'width'", function () {
+        spyOn(codeWriter, "instruction");
+        subject.width();
+
+        expect(SpecHelper.calls(codeWriter.instruction)).toEqual([
+          // 1 unless k == 5 || x == 3
+          { type: 'push', symbol: 'k' },
+          { type: 'constant', value: 5 },
+          { type: 'equal' },
+          { type: 'push', symbol: 'x' },
+          { type: 'constant', value: 3 },
+          { type: 'equal' },
+          { type: 'or' },
+          { type: 'constant', value: 0 },
+          { type: 'constant', value: 1 },
+          { type: 'if' },
+
+          // 1 (unconditional)
+          { type: 'constant', value: 1 },
+
+          { type: 'add' },
+          { type: 'pop', symbol: '$$$_L3_INTEGER1_$$$' }
+        ]);
+      });
+    });
+
+    describe("when the top of the stack is not an array", function () {
+      beforeEach(function () {
+        stack.push("foo");
+        symbolTable.set("foo", "integer", ["a"]);
+      });
+
+      it("throws an error", function () {
+        expect(function () {
+          subject.width();
         }).toThrow();
       });
     });
