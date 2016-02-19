@@ -10,7 +10,7 @@ var Registry = require(compiler + "/level3Compiler/registry");
 var CodeWriter = require(compiler + "/level3Compiler/codeWriter");
 
 describe("InstructionSet", function () {
-  var subject, stack, typedefStack, symbolTable, registry, codeWriter, conditionalInvariants;
+  var subject, stack, typedefStack, symbolTable, registry, codeWriter, conditionalNils;
 
   beforeEach(function () {
     stack = new Stack();
@@ -18,7 +18,7 @@ describe("InstructionSet", function () {
     symbolTable = new SymbolTable();
     registry = new Registry();
     codeWriter = new CodeWriter();
-    conditionalInvariants = {};
+    conditionalNils = {};
 
     subject = new describedClass({
       stack: stack,
@@ -26,7 +26,7 @@ describe("InstructionSet", function () {
       symbolTable: symbolTable,
       registry: registry,
       codeWriter: codeWriter,
-      conditionalInvariants: conditionalInvariants
+      conditionalNils: conditionalNils
     });
   });
 
@@ -1510,7 +1510,7 @@ describe("InstructionSet", function () {
     });
   });
 
-  describe("fetch", function () {
+  describe("get", function () {
     beforeEach(function () {
       stack.push("bottom");
       stack.push("someArray");
@@ -1520,129 +1520,81 @@ describe("InstructionSet", function () {
       symbolTable.set("key", "integer", ["k"]);
     });
 
-    describe("fetching from a non-array", function () {
+    describe("getting from a non-array", function () {
       beforeEach(function () {
         symbolTable.set("someArray", "integer", ["foo"]);
       });
 
       it("throws an error", function () {
         expect(function () {
-          subject.fetch();
+          subject.get(true);
         }).toThrow();
       });
     });
 
-    describe("fetching with a non-integer key", function () {
+    describe("getting with a non-integer key", function () {
       beforeEach(function () {
         symbolTable.set("key", "boolean", ["k"]);
       });
 
       it("throws an error", function () {
         expect(function () {
-          subject.fetch();
+          subject.get(true);
         }).toThrow();
       });
     });
 
-    describe("fetching from an array of booleans", function () {
-      beforeEach(function () {
-        symbolTable.set("foo", "boolean", ["a"]);
-        symbolTable.set("bar", "boolean", ["b"]);
-      });
-
-      it("replaces the top symbol on the stack", function () {
-        subject.fetch();
-        expect(stack.pop()).toEqual("$$$_L3_TMP1_$$$");
-        expect(stack.pop()).toEqual("bottom");
-      });
-
-      it("adds the new symbol to the symbol table", function () {
-        subject.fetch();
-        var newSymbol = stack.pop();
-
-        expect(symbolTable.type(newSymbol)).toEqual("boolean");
-        expect(symbolTable.symbols(newSymbol)).toEqual(["$$$_L3_BOOLEAN1_$$$"]);
-      });
-
-      it("writes instructions for 'fetch'", function () {
-        spyOn(codeWriter, "instruction");
-        subject.fetch();
-
-        expect(SpecHelper.calls(codeWriter.instruction)).toEqual([
-          // invariant: k >= 0
-          { type: "push", symbol: "k" },
-          { type: "constant", value: 0 },
-          { type: "greaterequal" },
-          { type: "invariant" },
-
-          // invariant: k < array.length
-          { type: "push", symbol: "k" },
-          { type: "constant", value: 2 },
-          { type: "lessthan" },
-          { type: "invariant" },
-
-          // if k == 0
-          { type: "push", symbol: "k" },
-          { type: "constant", value: 0 },
-          { type: "equal" },
-
-          // a
-          { type: "push", symbol: "a" },
-
-          // else if k == 1
-          { type: "push", symbol: "k" },
-          { type: "constant", value: 1 },
-          { type: "equal" },
-
-          // b
-          { type: "push", symbol: "b" },
-
-          // else false (this will never be true because of invariants)
-          { type: "constant", value: false },
-          { type: "if" },
-          { type: "if" },
-
-          { type: "pop", symbol: "$$$_L3_BOOLEAN1_$$$" }
-        ]);
-      });
-    });
-
-    describe("fetching from an array of integers", function () {
+    describe("getting from an array of integers", function () {
       beforeEach(function () {
         symbolTable.set("foo", "integer", ["a"]);
         symbolTable.set("bar", "integer", ["b"]);
       });
 
-      it("replaces the top symbol on the stack", function () {
-        subject.fetch();
+      it("replaces the top two symbols on the stack", function () {
+        subject.get(true);
+
+        expect(stack.pop()).toEqual("$$$_L3_TMP2_$$$");
         expect(stack.pop()).toEqual("$$$_L3_TMP1_$$$");
         expect(stack.pop()).toEqual("bottom");
       });
 
-      it("adds the new symbol to the symbol table", function () {
-        subject.fetch();
-        var newSymbol = stack.pop();
+      it("adds the value and nil symbols to the symbol table", function () {
+        subject.get(true);
 
-        expect(symbolTable.type(newSymbol)).toEqual("integer");
-        expect(symbolTable.symbols(newSymbol)).toEqual(["$$$_L3_INTEGER1_$$$"]);
+        var valueSymbol = stack.pop();
+        var nilSymbol = stack.pop();
+
+        expect(symbolTable.type(valueSymbol)).toEqual("integer");
+        expect(symbolTable.symbols(valueSymbol)).toEqual([
+          "$$$_L3_INTEGER1_$$$"
+        ]);
+
+        expect(symbolTable.type(nilSymbol)).toEqual("boolean");
+        expect(symbolTable.symbols(nilSymbol)).toEqual([
+          "$$$_L3_BOOLEAN1_$$$"
+        ]);
       });
 
-      it("writes instructions for 'fetch'", function () {
+      it("writes instructions for 'get'", function () {
         spyOn(codeWriter, "instruction");
-        subject.fetch();
+        subject.get(true);
 
         expect(SpecHelper.calls(codeWriter.instruction)).toEqual([
-          // invariant: k >= 0
+          // k < 0
           { type: "push", symbol: "k" },
           { type: "constant", value: 0 },
-          { type: "greaterequal" },
-          { type: "invariant" },
+          { type: "lessthan" },
 
-          // invariant: k < array.length
+          // k >= length
           { type: "push", symbol: "k" },
           { type: "constant", value: 2 },
-          { type: "lessthan" },
-          { type: "invariant" },
+          { type: "greaterequal" },
+
+          // k is out of bounds
+          { type: "or" },
+
+          // outOfBounds
+          { type: "pop", symbol: "$$$_L3_BOOLEAN1_$$$" },
 
           // if k == 0
           { type: "push", symbol: "k" },
@@ -1660,167 +1612,307 @@ describe("InstructionSet", function () {
           // b
           { type: "push", symbol: "b" },
 
-          // else 0 (this will never be true because of invariants)
+          // else 0
           { type: "constant", value: 0 },
           { type: "if" },
           { type: "if" },
 
-          { type: "pop", symbol: "$$$_L3_INTEGER1_$$$" },
+          // value
+          { type: "pop", symbol: "$$$_L3_INTEGER1_$$$" }
         ]);
       });
     });
 
-    describe("fetching from a nested array", function () {
+    describe("getting from an array of booleans", function () {
       beforeEach(function () {
-        symbolTable.set("foo", "array", ["abc", "def", "ghi"]);
-        symbolTable.set("bar", "array", ["jkl", "mno"]);
+        symbolTable.set("foo", "boolean", ["a"]);
+        symbolTable.set("bar", "boolean", ["b"]);
+      });
+
+      it("replaces the top two symbols on the stack", function () {
+        subject.get(true);
+
+        expect(stack.pop()).toEqual("$$$_L3_TMP2_$$$");
+        expect(stack.pop()).toEqual("$$$_L3_TMP1_$$$");
+        expect(stack.pop()).toEqual("bottom");
+      });
+
+      it("adds the value and nil symbols to the symbol table", function () {
+        subject.get(true);
+
+        var valueSymbol = stack.pop();
+        var nilSymbol = stack.pop();
+
+        expect(symbolTable.type(valueSymbol)).toEqual("boolean");
+        expect(symbolTable.symbols(valueSymbol)).toEqual([
+          "$$$_L3_BOOLEAN2_$$$"
+        ]);
+
+        expect(symbolTable.type(nilSymbol)).toEqual("boolean");
+        expect(symbolTable.symbols(nilSymbol)).toEqual([
+          "$$$_L3_BOOLEAN1_$$$"
+        ]);
+      });
+
+      it("writes instructions for 'get'", function () {
+        spyOn(codeWriter, "instruction");
+        subject.get(true);
+
+        expect(SpecHelper.calls(codeWriter.instruction)).toEqual([
+          // k < 0
+          { type: "push", symbol: "k" },
+          { type: "constant", value: 0 },
+          { type: "lessthan" },
+
+          // k >= length
+          { type: "push", symbol: "k" },
+          { type: "constant", value: 2 },
+          { type: "greaterequal" },
+
+          // k is out of bounds
+          { type: "or" },
+
+          // outOfBounds
+          { type: "pop", symbol: "$$$_L3_BOOLEAN1_$$$" },
+
+          // if k == 0
+          { type: "push", symbol: "k" },
+          { type: "constant", value: 0 },
+          { type: "equal" },
+
+          // a
+          { type: "push", symbol: "a" },
+
+          // else if k == 1
+          { type: "push", symbol: "k" },
+          { type: "constant", value: 1 },
+          { type: "equal" },
+
+          // b
+          { type: "push", symbol: "b" },
+
+          // else false
+          { type: "constant", value: false },
+          { type: "if" },
+          { type: "if" },
+
+          // value
+          { type: "pop", symbol: "$$$_L3_BOOLEAN2_$$$" }
+        ]);
+      });
+    });
+
+    describe("getting from an array of arrays", function () {
+      beforeEach(function () {
+        symbolTable.set("foo", "array", ["abc", "def"]);
+        symbolTable.set("bar", "array", ["ghi"]);
 
         symbolTable.set("abc", "integer", ["a"]);
         symbolTable.set("def", "integer", ["b"]);
         symbolTable.set("ghi", "integer", ["c"]);
-        symbolTable.set("jkl", "integer", ["d"]);
-        symbolTable.set("mno", "integer", ["e"]);
       });
 
-      it("replaces the top symbol on the stack", function () {
-        subject.fetch();
-        expect(stack.pop()).toEqual("$$$_L3_TMP6_$$$");
+      it("replaces the top two symbols on the stack", function () {
+        subject.get(true);
+
+        expect(stack.pop()).toEqual("$$$_L3_TMP7_$$$");
+        expect(stack.pop()).toEqual("$$$_L3_TMP1_$$$");
         expect(stack.pop()).toEqual("bottom");
       });
 
-      it("adds the new symbol to the symbol table", function () {
-        subject.fetch();
-        var newSymbol = stack.pop();
+      it("adds the value and nil symbols to the symbol table", function () {
+        subject.get(true);
 
-        expect(symbolTable.type(newSymbol)).toEqual("array");
-        expect(symbolTable.symbols(newSymbol)).toEqual([
-          "$$$_L3_TMP3_$$$",
+        var valueSymbol = stack.pop();
+        var nilSymbol = stack.pop();
+
+        expect(symbolTable.type(valueSymbol)).toEqual("array");
+        expect(symbolTable.symbols(valueSymbol)).toEqual([
           "$$$_L3_TMP4_$$$",
-          "$$$_L3_TMP5_$$$"
+          "$$$_L3_TMP6_$$$"
+        ]);
+
+        expect(symbolTable.type(nilSymbol)).toEqual("boolean");
+        expect(symbolTable.symbols(nilSymbol)).toEqual([
+          "$$$_L3_BOOLEAN1_$$$"
         ]);
       });
 
-      it("adds the nested elements to the symbol table", function () {
-        subject.fetch();
+      it("adds the value's elements to the symbol table", function () {
+        subject.get(true);
 
-        expect(symbolTable.type("$$$_L3_TMP3_$$$")).toEqual("integer");
-        expect(symbolTable.type("$$$_L3_TMP4_$$$")).toEqual("integer");
-        expect(symbolTable.type("$$$_L3_TMP5_$$$")).toEqual("integer");
+        var valueSymbol = stack.pop();
+        var elements = symbolTable.symbols(valueSymbol);
 
-        expect(symbolTable.symbols("$$$_L3_TMP3_$$$")).toEqual(["$$$_L3_INTEGER2_$$$"]);
-        expect(symbolTable.symbols("$$$_L3_TMP4_$$$")).toEqual(["$$$_L3_INTEGER3_$$$"]);
-        expect(symbolTable.symbols("$$$_L3_TMP5_$$$")).toEqual(["$$$_L3_INTEGER4_$$$"]);
-      });
+        expect(symbolTable.type(elements[0])).toEqual("integer");
+        expect(symbolTable.symbols(elements[0])).toEqual([
+          "$$$_L3_INTEGER2_$$$"
+        ]);
 
-      it("adds an invariant to be applied on the next fetch", function () {
-        subject.fetch();
-
-        var newSymbol = stack.pop();
-        var invariants = conditionalInvariants[newSymbol];
-
-        expect(invariants).toEqual([
-          { invariantSymbol: "$$$_L3_BOOLEAN1_$$$", conditionIndex: 2 },
+        expect(symbolTable.type(elements[1])).toEqual("integer");
+        expect(symbolTable.symbols(elements[1])).toEqual([
+          "$$$_L3_INTEGER3_$$$"
         ]);
       });
 
-      describe("which includes empty arrays", function () {
+      describe("when the nested array includes an empty array", function () {
         beforeEach(function () {
           symbolTable.set("foo", "array", []);
         });
 
         it("does not throw an error", function () {
           expect(function () {
-            subject.fetch();
+            subject.get(true);
           }).not.toThrow();
         });
       });
+
+      it("adds conditional nils for the smaller array", function () {
+        subject.get(true);
+
+        var newSymbol = stack.pop();
+        var conditions = conditionalNils[newSymbol];
+
+        expect(conditions).toEqual([
+          { conditionSymbol: "$$$_L3_BOOLEAN2_$$$", nilIndex: 1 },
+          { conditionSymbol: "$$$_L3_BOOLEAN1_$$$" }
+        ]);
+      });
     });
 
-    describe("fetching from an array with invariants", function () {
+    describe("getting from an array with conditional nils", function () {
       beforeEach(function () {
         symbolTable.set("foo", "integer", ["a"]);
         symbolTable.set("bar", "integer", ["b"]);
 
-        conditionalInvariants.someArray = [
-          { invariantSymbol: "inv1", conditionIndex: 1 },
-          { invariantSymbol: "inv2", conditionIndex: 3 }
+        conditionalNils.someArray = [
+          { conditionSymbol: "condition1", nilIndex: 1 },
+          { conditionSymbol: "condition2", nilIndex: 3 },
+          { conditionSymbol: "condition3" }
         ];
-
-        symbolTable.set("previousKey", "integer", ["p"]);
       });
 
-      it("writes code for the conditional invariants", function () {
+      it("writes code for the conditional nils", function () {
         spyOn(codeWriter, "instruction");
-        subject.fetch();
+        subject.get(true);
 
         var calls = SpecHelper.calls(codeWriter.instruction)
-        var relevantCalls = calls.slice(0, 14);
+        var relevantCalls = calls.slice(0, 22);
 
         expect(relevantCalls).toEqual([
-          { type: "push", symbol: "k" },
-          { type: "constant", value: 1 },
-          { type: "equal" },
-          { type: "not" },
-          { type: "push", symbol: "inv1" },
-          { type: "or" },
-          { type: "invariant" },
+          // check bounds
+          { type: 'push', symbol: 'k' },
+          { type: 'constant', value: 0 },
+          { type: 'lessthan' },
+          { type: 'push', symbol: 'k' },
+          { type: 'constant', value: 2 },
+          { type: 'greaterequal' },
+          { type: 'or' },
 
-          { type: "push", symbol: "k" },
-          { type: "constant", value: 3 },
-          { type: "equal" },
-          { type: "not" },
-          { type: "push", symbol: "inv2" },
-          { type: "or" },
-          { type: "invariant" }
+          // conditional1 && k == 1
+          { type: 'push', symbol: 'condition1' },
+          { type: 'push', symbol: 'k' },
+          { type: 'constant', value: 1 },
+          { type: 'equal' },
+          { type: 'and' },
+          { type: 'or' },
+
+          // condition2 && k == 3
+          { type: 'push', symbol: 'condition2' },
+          { type: 'push', symbol: 'k' },
+          { type: 'constant', value: 3 },
+          { type: 'equal' },
+          { type: 'and' },
+          { type: 'or' },
+
+          // condition3
+          { type: 'push', symbol: 'condition3' },
+          { type: 'or' },
+
+          { type: 'pop', symbol: '$$$_L3_BOOLEAN1_$$$' }
         ]);
       });
 
-      it("leaves the restrictions untouched for other fetches", function () {
-        subject.fetch();
+      it("leaves the conditions untouched for other fetches", function () {
+        subject.get(true);
 
-        expect(conditionalInvariants.someArray).toEqual([
-          { invariantSymbol: "inv1", conditionIndex: 1 },
-          { invariantSymbol: "inv2", conditionIndex: 3 }
+        expect(conditionalNils.someArray).toEqual([
+          { conditionSymbol: "condition1", nilIndex: 1 },
+          { conditionSymbol: "condition2", nilIndex: 3 },
+          { conditionSymbol: "condition3" }
         ]);
       });
     });
 
-    describe("fetching a nested array that has invariants", function () {
+    describe("getting without bounds checking", function () {
+      beforeEach(function () {
+        symbolTable.set("foo", "integer", ["a"]);
+        symbolTable.set("bar", "integer", ["b"]);
+
+        conditionalNils.someArray = [
+          { conditionSymbol: "condition1", nilIndex: 1 },
+          { conditionSymbol: "condition2", nilIndex: 3 }
+        ];
+      });
+
+      it("doesn't write any condition checking code", function () {
+        spyOn(codeWriter, "instruction");
+        subject.get(false);
+
+        expect(SpecHelper.calls(codeWriter.instruction)).toEqual([
+          { type: 'push', symbol: 'k' },
+          { type: 'constant', value: 0 },
+          { type: 'equal' },
+          { type: 'push', symbol: 'a' },
+
+          { type: 'push', symbol: 'k' },
+          { type: 'constant', value: 1 },
+          { type: 'equal' },
+          { type: 'push', symbol: 'b' },
+
+          { type: 'constant', value: 0 },
+          { type: 'if' },
+          { type: 'if' },
+
+          { type: 'pop', symbol: '$$$_L3_INTEGER1_$$$' }
+        ]);
+      });
+    });
+
+    describe("getting a nested array that has conditional nils", function () {
       beforeEach(function () {
         symbolTable.set("foo", "array", ["a", "b"]);
         symbolTable.set("bar", "array", ["c"]);
 
-        conditionalInvariants.foo = [
-          { invariantSymbol: "inv1", conditionIndex: 0 }
+        conditionalNils.foo = [
+          { conditionSymbol: "condition1", nilIndex: 0 }
         ]
-
-        symbolTable.set("previousKey", "integer", ["p"]);
-        symbolTable.set("anotherKey", "integer", ["q"]);
 
         symbolTable.set("a", "integer", ["x"]);
         symbolTable.set("b", "integer", ["y"]);
         symbolTable.set("c", "integer", ["z"]);
       });
 
-      it("adds an additional invariant", function () {
-        subject.fetch();
+      it("adds an additional conditional", function () {
+        subject.get();
         var newSymbol = stack.pop();
 
-        expect(conditionalInvariants[newSymbol]).toEqual([
-          { invariantSymbol: '$$$_L3_BOOLEAN1_$$$', conditionIndex: 1 },
-          { invariantSymbol: '$$$_L3_BOOLEAN2_$$$', conditionIndex: 0 }
+        expect(conditionalNils[newSymbol]).toEqual([
+          { conditionSymbol: '$$$_L3_BOOLEAN2_$$$', nilIndex: 1 },
+          { conditionSymbol: 'condition1', nilIndex: 0 },
+          { conditionSymbol: '$$$_L3_BOOLEAN1_$$$' }
         ]);
       });
     });
 
-    describe("fetching from an empty array", function () {
+    describe("getting from an empty array", function () {
       beforeEach(function () {
         symbolTable.set("someArray", "array", []);
       });
 
       it("throws an error", function () {
         expect(function () {
-          subject.fetch();
+          subject.get();
         }).toThrow();
       });
     });
@@ -2153,158 +2245,6 @@ describe("InstructionSet", function () {
       it("throws an error", function () {
         expect(function () {
           subject.equal();
-        }).toThrow();
-      });
-    });
-  });
-
-  describe("width", function () {
-    beforeEach(function () {
-      stack.push("bottom");
-      stack.push("arr");
-
-      symbolTable.set("arr", "array", ["foo", "bar"]);
-      symbolTable.set("foo", "integer", ["a"]);
-      symbolTable.set("bar", "integer", ["b"]);
-    });
-
-    describe("for an array without restrictions", function () {
-      it("replaces the top symbol on the stack", function () {
-        subject.width();
-        expect(stack.pop()).toEqual("$$$_L3_TMP1_$$$");
-        expect(stack.pop()).toEqual("bottom");
-      });
-
-      it("adds the new symbol to the symbol table", function () {
-        subject.width();
-        var newSymbol = stack.pop();
-
-        expect(symbolTable.type(newSymbol)).toEqual("integer");
-        expect(symbolTable.symbols(newSymbol)).toEqual(["$$$_L3_INTEGER1_$$$"]);
-      });
-
-      it("writes instructions for 'width'", function () {
-        spyOn(codeWriter, "instruction");
-        subject.width();
-
-        expect(SpecHelper.calls(codeWriter.instruction)).toEqual([
-          { type: "constant", value: 2 },
-          { type: "pop", symbol: "$$$_L3_INTEGER1_$$$" }
-        ]);
-      });
-    });
-
-    describe("for an array with a single restriction", function () {
-      beforeEach(function () {
-        conditionalInvariants.arr = [
-          { keySymbols: ["k"], keyIndex: 5, nilIndex: 1 }
-        ]
-      });
-
-      it("writes instructions for 'width'", function () {
-        spyOn(codeWriter, "instruction");
-        subject.width();
-
-        expect(SpecHelper.calls(codeWriter.instruction)).toEqual([
-          // 1 unless k == 5
-          { type: 'push', symbol: 'k' },
-          { type: 'constant', value: 5 },
-          { type: 'equal' },
-          { type: 'constant', value: 0 },
-          { type: 'constant', value: 1 },
-          { type: 'if' },
-
-          // 1 (unconditional)
-          { type: 'constant', value: 1 },
-
-          { type: 'add' },
-          { type: 'pop', symbol: '$$$_L3_INTEGER1_$$$' }
-        ]);
-      });
-    });
-
-    describe("for an array with multiple restrictions", function () {
-      beforeEach(function () {
-        conditionalInvariants.arr = [
-          { keySymbols: ["k"], keyIndex: 5, nilIndex: 1 },
-          { keySymbols: ["x"], keyIndex: 3, nilIndex: 0 }
-        ]
-      });
-
-      it("writes instructions for 'width'", function () {
-        spyOn(codeWriter, "instruction");
-        subject.width();
-
-        expect(SpecHelper.calls(codeWriter.instruction)).toEqual([
-          // 1 unless x == 3
-          { type: 'push', symbol: 'x' },
-          { type: 'constant', value: 3 },
-          { type: 'equal' },
-          { type: 'constant', value: 0 },
-          { type: 'constant', value: 1 },
-          { type: 'if' },
-
-          // 1 unless k == 5
-          { type: 'push', symbol: 'k' },
-          { type: 'constant', value: 5 },
-          { type: 'equal' },
-          { type: 'constant', value: 0 },
-          { type: 'constant', value: 1 },
-          { type: 'if' },
-
-          // 0 (unconditional)
-          { type: 'constant', value: 0 },
-
-          { type: 'add' },
-          { type: 'add' },
-          { type: 'pop', symbol: '$$$_L3_INTEGER1_$$$' }
-        ]);
-      });
-    });
-
-    describe("when restrictions are for the same index", function () {
-      beforeEach(function () {
-        conditionalInvariants.arr = [
-          { keySymbols: ["k"], keyIndex: 5, nilIndex: 1 },
-          { keySymbols: ["x"], keyIndex: 3, nilIndex: 1 }
-        ]
-      });
-
-      it("writes instructions for 'width'", function () {
-        spyOn(codeWriter, "instruction");
-        subject.width();
-
-        expect(SpecHelper.calls(codeWriter.instruction)).toEqual([
-          // 1 unless k == 5 || x == 3
-          { type: 'push', symbol: 'k' },
-          { type: 'constant', value: 5 },
-          { type: 'equal' },
-          { type: 'push', symbol: 'x' },
-          { type: 'constant', value: 3 },
-          { type: 'equal' },
-          { type: 'or' },
-          { type: 'constant', value: 0 },
-          { type: 'constant', value: 1 },
-          { type: 'if' },
-
-          // 1 (unconditional)
-          { type: 'constant', value: 1 },
-
-          { type: 'add' },
-          { type: 'pop', symbol: '$$$_L3_INTEGER1_$$$' }
-        ]);
-      });
-    });
-
-    describe("when the top of the stack is not an array", function () {
-      beforeEach(function () {
-        stack.push("foo");
-        symbolTable.set("foo", "integer", ["a"]);
-      });
-
-      it("throws an error", function () {
-        expect(function () {
-          subject.width();
         }).toThrow();
       });
     });

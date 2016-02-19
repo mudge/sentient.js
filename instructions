@@ -48,14 +48,15 @@ Level 3 Instructions:
 [X] typedef
 [X] array
 [X] collect
-[X] fetch
+[X] get
+[ ] fetch
 [ ] width
 [X] push
 [X] pop
 [X] not
 [X] and
 [X] or
-[.] equal
+[ ] equal
 [X] constant
 [X] variable
 [X] boolean

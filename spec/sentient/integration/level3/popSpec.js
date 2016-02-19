@@ -46,14 +46,16 @@ describe("Integration: 'pop'", function () {
         { type: "collect", width: 1 },
         { type: "collect", width: 2 },
         { type: "constant", value: 1 },
-        { type: "fetch" },
+        { type: "get" },
         { type: "pop", symbol: "foo" },
 
         { type: "push", symbol: "foo" },
         { type: "constant", value: 1 },
-        { type: "fetch" },
+        { type: "get", checkBounds: true },
         { type: "pop", symbol: "bar" },
+        { type: "pop", symbol: "barOutOfBounds" },
         { type: "variable", symbol: "bar" },
+        { type: "variable", symbol: "barOutOfBounds" }
       ]
     });
     program = Level2Compiler.compile(program);
@@ -68,7 +70,8 @@ describe("Integration: 'pop'", function () {
     result = Level2Runtime.decode(program, result);
     result = Level3Runtime.decode(program, result);
 
-    expect(result.bar).toEqual(undefined);
+    expect(result.bar).toEqual(0);
+    expect(result.barOutOfBounds).toEqual(true);
   });
 
   it("throws an error if the stack is empty", function () {
