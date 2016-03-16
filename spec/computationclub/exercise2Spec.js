@@ -5,7 +5,20 @@ var Sentient = require("../../lib/sentient");
 describe("Exercise 2", function () {
   var machineCode = Sentient.compile({
     instructions: [
-      // Add your instructions here.
+      { type: 'integer', symbol: 'x', width: 8 },
+      { type: 'integer', symbol: 'y', width: 8 },
+      { type: 'push', symbol: 'x' },
+      { type: 'push', symbol: 'x' },
+      { type: 'multiply' },
+      { type: 'push', symbol: 'y' },
+      { type: 'push', symbol: 'y' },
+      { type: 'multiply' },
+      { type: 'add' },
+      { type: 'constant', value: 90 },
+      { type: 'equal' },
+      { type: 'invariant' },
+      { type: 'variable', symbol: 'x' },
+      { type: 'variable', symbol: 'y' }
     ]
   });
 
