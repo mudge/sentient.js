@@ -1,0 +1,37 @@
+#wrap {
+  text-align: center;
+  min-width: 70em;
+}
+
+h1 {
+  font-size: 5em;
+  text-decoration: underline;
+}
+
+p {
+  font-size: 1em;
+  margin: 2em 0;
+}
+
+input {
+  font-size: 1em;
+  width: 2em;
+  height: 2em;
+  text-align: center;
+  line-height: 1em;
+  border-radius: 0.2em;
+  border: 0.1em solid gray;
+  outline: none;
+  margin-right: 0.2em;
+}
+
+.note {
+  font-size: 1.2em;
+}
+
+#convert {
+  font-size: 14px;
+  border: 1px solid black;
+  background: white;
+  cursor: pointer;
+}
