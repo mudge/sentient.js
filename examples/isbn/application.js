@@ -9,7 +9,6 @@ var Application = function () {
 
   self.run = function () {
     program = compileProgram();
-    self.update();
   };
 
   self.update = function () {
